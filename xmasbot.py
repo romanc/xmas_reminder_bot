@@ -31,28 +31,46 @@ def remove_jobs_by_name(name, context):
     return True
 
 
+def setup_new_job(chat_id, context):
+    here = timezone('Europe/Berlin')
+    (hours, minutes) = context.user_data['reminder_time'].split(":")
+    mytime = dt.datetime.combine(
+        dt.date.today(), dt.time(int(hours), int(minutes), 0))
+    print(here.localize(mytime))
+    localized = here.localize(mytime)
+    context.job_queue.run_daily(
+        reminder, localized, context={
+            "chat_id": chat_id, "xmas_day": context.user_data["xmas_day"]},
+        name=str(chat_id))
+
+
+def update_job(chat_id, context):
+    remove_jobs_by_name(str(chat_id), context)
+    setup_new_job(chat_id, context)
+
+
 def reminder(context):
-    print("sending reply")
-    job = context.job
+    ctx = context.job.context
     today = dt.date.today()
-    diff = dt.date(today.year, 12, 24) - today
+    diff = dt.date(today.year, 12, int(ctx["xmas_day"])) - today
+    # todo: if diff.days == 0 -> Merry christmas!
+    # todo: if diff.days == 1 -> Tomorrow is christmas
+    if diff.days < 0:
+        diff = dt.date(today.year + 1, 12, int(ctx["xmas_day"])) - today
     context.bot.send_message(
-        job.context,
+        ctx["chat_id"],
         text="Only %s days left until christmas %s" % (diff.days, E_xmas))
 
 
-def start(update, context):
-    chat_id = update.message.chat_id
-    # remove old job, if it exists
-    remove_jobs_by_name(str(chat_id), context)
+def start_cmd(update, context):
+    if not context.user_data['xmas_day']:
+        context.user_data['xmas_day'] = "24"
+    if not context.user_data['reminder_time']:
+        context.user_data["reminder_time"] = "00:01"
 
-    # set new job
-    here = timezone('Europe/Berlin')
-    mytime = dt.datetime.combine(dt.date.today(), dt.time(23, 20, 0))
-    print(here.localize(mytime))
-    localized = here.localize(mytime)
-    context.job_queue.run_daily(reminder, localized, context=chat_id,
-                                name=str(chat_id))
+    chat_id = update.message.chat_id
+    remove_jobs_by_name(str(chat_id), context)
+    setup_new_job(chat_id, context)
 
     reply = E_santa + "Ho ho ho!\n\n"\
         "Santa's bot works out of the box, but you can use /settings to "\
@@ -63,17 +81,14 @@ def start(update, context):
 
 
 def stop_cmd(update, context):
-    chat_id = update.message.chat_id
-    # remove old job, if it exists
-    removed = remove_jobs_by_name(str(chat_id), context)
+    removed = remove_jobs_by_name(str(update.message.chat_id), context)
 
     if removed:
         update.message.reply_text(
             E_stop + " All reminders removed. If you change "
             "your mind use /restart to re-enable them.")
-        return
-
-    update.message.reply_text("No reminders found to remove.")
+    else:
+        update.message.reply_text("No reminders found to remove.")
 
 
 def restart_cmd(update, context):
@@ -84,14 +99,8 @@ def restart_cmd(update, context):
         update.message.reply_text("You already have a reminder configured.")
         return
 
-    # set new job
-    here = timezone('Europe/Berlin')
-    mytime = dt.datetime.combine(dt.date.today(), dt.time(23, 22, 0))
-    print(here.localize(mytime))
-    localized = here.localize(mytime)
-    context.job_queue.run_daily(reminder, localized, context=chat_id,
-                                name=str(chat_id))
-    update.message.reply_text(E_restart + " Restarted your jobs")
+    setup_new_job(chat_id, context)
+    update.message.reply_text(E_restart + " Restarted your reminders.")
 
 
 def help_cmd(update, context):
@@ -101,20 +110,31 @@ def help_cmd(update, context):
     update.message.reply_text(help_text)
 
 
-def cancel(update, context):
+def cancel_cmd(update, context):
     update.message.reply_text("Okay. Gotta go, bye! \U0001F44B")
     return ConversationHandler.END
 
 
-def settings(update, context):
+def settings_cmd(update, context):
     keyboard = [[InlineKeyboardButton(E_xmas + " day",
                                       callback_data="xmas_day"),
                  InlineKeyboardButton(E_alarm + " time",
                                       callback_data="reminder_time")]]
-
     markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(E_santa + "Ho ho ho!\n\nWhat do you want to configure?",
-                              reply_markup=markup)
+
+    jobs = context.job_queue.get_jobs_by_name(str(update.message.chat_id))
+    update.message.reply_text(
+        E_santa + "Ho ho ho!\n\n"
+        "Your current configuration looks like this:\n\n"
+        "\t\U00002022 Reminders: " +
+        ("on " + E_restart if len(jobs) > 0 else "off " + E_stop) + "\n"
+        "\t\U00002022 Christmas day: " +
+        context.user_data["xmas_day"] + "\n"
+        "\t\U00002022 Reminder time: " +
+        context.user_data["reminder_time"] + "\n\n"
+        "What do you want to configure? If these settings look good, use "
+        "/cancel to abort.",
+        reply_markup=markup)
 
     return CHOOSE
 
@@ -150,6 +170,7 @@ def xmasday(update, context):
     query.answer()
 
     context.user_data['xmas_day'] = query.data
+    update_job(query.message.chat_id, context)
 
     reply = "Set Christmas %s to the %sth of December!" % (E_xmas, query.data)
     query.edit_message_text(reply)
@@ -161,6 +182,7 @@ def handleReminderTime(update, context):
     query.answer()
 
     context.user_data['reminder_time'] = query.data
+    update_job(query.message.chat_id, context)
 
     reply = "Set %s reminder time to %s" % (E_alarm, query.data)
     query.edit_message_text(reply)
@@ -173,11 +195,8 @@ def xmas_bot(token):
 
     myDispatcher = updater.dispatcher
 
-    myDispatcher.add_handler(CommandHandler(
-        "start", start, pass_job_queue=True))
-
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('settings', settings)],
+        entry_points=[CommandHandler('settings', settings_cmd)],
 
         states={
             CHOOSE: [CallbackQueryHandler(chooseSetting)],
@@ -185,12 +204,13 @@ def xmas_bot(token):
             HANDLE_REMINDER: [CallbackQueryHandler(handleReminderTime)]
         },
 
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel_cmd)]
     )
     myDispatcher.add_handler(conv_handler)
 
-    myDispatcher.add_handler(CommandHandler("cancel", cancel))
+    myDispatcher.add_handler(CommandHandler("cancel", cancel_cmd))
     myDispatcher.add_handler(CommandHandler("help", help_cmd))
+    myDispatcher.add_handler(CommandHandler("start", start_cmd))
     myDispatcher.add_handler(CommandHandler("stop", stop_cmd))
     myDispatcher.add_handler(CommandHandler("restart", restart_cmd))
 
