@@ -4,6 +4,8 @@
 
 :milky_way: :sled: :santa: :house_with_garden: :christmas_tree: :gift: :gift: :gift:
 
+:christmas_tree: :notes: [Click here](https://www.youtube.com/watch?v=E8gmARGvPlI) for the Christmas soundtrack!
+
 ## Usage
 
 Visit https://t.me/xmas_reminder_bot or use `@xmas_reminder_bot` directly from within Telegram.
