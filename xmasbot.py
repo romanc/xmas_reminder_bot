@@ -8,6 +8,12 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler, CommandHandler,\
     ConversationHandler, PicklePersistence, Updater
 
+# notes to myself
+# - this bot works, unless you restart
+# - jobs won't "survive" restarts of the bot
+# - one option to resolve the issue is to save the on/off state of reminders
+#   and the chat_id in the file and then re-add the jobs when the bot starts
+
 # emojis
 E_alarm = "\U000023F0"
 E_gear = "\U00002699"
@@ -15,6 +21,7 @@ E_restart = "\U0001F7E2"
 E_santa = "\U0001F385"
 E_stop = "\U0001F6D1"
 E_xmas = "\U0001F384"
+E_blush = "\U0001F60A"
 
 CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
 
@@ -22,6 +29,7 @@ CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
 def remove_jobs_by_name(name, context):
     """Removes the job with the given name. Returns true iff a
     job was removed."""
+    context.user_data["reminders"] = "off"
     current_jobs = context.job_queue.get_jobs_by_name(name)
     print("Jobs found: " + str(len(current_jobs)))
     if not current_jobs:
@@ -32,6 +40,7 @@ def remove_jobs_by_name(name, context):
 
 
 def setup_new_job(chat_id, context):
+    context.user_data["reminders"] = "on"
     here = timezone('Europe/Berlin')
     (hours, minutes) = context.user_data['reminder_time'].split(":")
     mytime = dt.datetime.combine(
@@ -63,10 +72,13 @@ def reminder(context):
 
 
 def start_cmd(update, context):
-    if not context.user_data['xmas_day']:
+    # setting default values
+    if "xmas_day" not in context.user_data:
         context.user_data['xmas_day'] = "24"
-    if not context.user_data['reminder_time']:
+    if "reminder_time" not in context.user_data:
         context.user_data["reminder_time"] = "00:01"
+    if "reminders" not in context.user_data:
+        context.user_data["reminders"] = "on"
 
     chat_id = update.message.chat_id
     remove_jobs_by_name(str(chat_id), context)
@@ -119,7 +131,9 @@ def settings_cmd(update, context):
     keyboard = [[InlineKeyboardButton(E_xmas + " day",
                                       callback_data="xmas_day"),
                  InlineKeyboardButton(E_alarm + " time",
-                                      callback_data="reminder_time")]]
+                                      callback_data="reminder_time"),
+                 InlineKeyboardButton("cancel",
+                                      callback_data="cancel")]]
     markup = InlineKeyboardMarkup(keyboard)
 
     jobs = context.job_queue.get_jobs_by_name(str(update.message.chat_id))
@@ -160,6 +174,9 @@ def chooseSetting(update, context):
                                 reply_markup=InlineKeyboardMarkup(keyboard))
 
         return HANDLE_REMINDER
+    elif (query.data == "cancel"):
+        query.edit_message_text(text="Keeping your settings as is. " + E_blush)
+        return ConversationHandler.END
 
     query.edit_message_text(text="I'm sorry, I can't find this setting.")
     return ConversationHandler.END
@@ -213,6 +230,27 @@ def xmas_bot(token):
     myDispatcher.add_handler(CommandHandler("start", start_cmd))
     myDispatcher.add_handler(CommandHandler("stop", stop_cmd))
     myDispatcher.add_handler(CommandHandler("restart", restart_cmd))
+
+    # stored user data
+    user_data = pp.get_user_data()
+
+    for item in pp.get_chat_data().items():
+        print("chat_id", item[0])
+        chat_id = item[0]
+        this_user = user_data[chat_id]
+        print("user_data", this_user)
+        if this_user.get("reminders", "off") == "on":
+            # new job
+            here = timezone('Europe/Berlin')
+            (hours, minutes) = this_user['reminder_time'].split(":")
+            mytime = dt.datetime.combine(
+                dt.date.today(), dt.time(int(hours), int(minutes), 0))
+            print(here.localize(mytime))
+            localized = here.localize(mytime)
+            updater.job_queue.run_daily(
+                reminder, localized, context={
+                    "chat_id": chat_id, "xmas_day": this_user["xmas_day"]},
+                name=str(chat_id))
 
     updater.start_polling()
     updater.idle()
