@@ -8,12 +8,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler, CommandHandler,\
     ConversationHandler, PicklePersistence, Updater
 
-# notes to myself
-# - this bot works, unless you restart
-# - jobs won't "survive" restarts of the bot
-# - one option to resolve the issue is to save the on/off state of reminders
-#   and the chat_id in the file and then re-add the jobs when the bot starts
-
 # emojis
 E_alarm = "\U000023F0"
 E_gear = "\U00002699"
@@ -31,7 +25,6 @@ def remove_jobs_by_name(name, context):
     job was removed."""
     context.user_data["reminders"] = "off"
     current_jobs = context.job_queue.get_jobs_by_name(name)
-    print("Jobs found: " + str(len(current_jobs)))
     if not current_jobs:
         return False
     for job in current_jobs:
@@ -40,13 +33,12 @@ def remove_jobs_by_name(name, context):
 
 
 def setup_new_job(chat_id, context):
-    context.user_data["reminders"] = "on"
     here = timezone('Europe/Berlin')
     (hours, minutes) = context.user_data['reminder_time'].split(":")
-    mytime = dt.datetime.combine(
-        dt.date.today(), dt.time(int(hours), int(minutes), 0))
-    print(here.localize(mytime))
-    localized = here.localize(mytime)
+    localized = here.localize(dt.datetime.combine(
+        dt.date.today(), dt.time(int(hours), int(minutes), 0)))
+
+    context.user_data["reminders"] = "on"
     context.job_queue.run_daily(
         reminder, localized, context={
             "chat_id": chat_id, "xmas_day": context.user_data["xmas_day"]},
@@ -146,8 +138,8 @@ def settings_cmd(update, context):
         context.user_data["xmas_day"] + "\n"
         "\t\U00002022 Reminder time: " +
         context.user_data["reminder_time"] + "\n\n"
-        "What do you want to configure? If these settings look good, use "
-        "/cancel to abort.",
+        "What do you want to configure? If these settings look good, use the "
+        "cancel button or just send /cancel.",
         reply_markup=markup)
 
     return CHOOSE
@@ -182,14 +174,15 @@ def chooseSetting(update, context):
     return ConversationHandler.END
 
 
-def xmasday(update, context):
+def handleXmasDay(update, context):
     query = update.callback_query
     query.answer()
 
     context.user_data['xmas_day'] = query.data
     update_job(query.message.chat_id, context)
 
-    reply = "Set Christmas %s to the %sth of December!" % (E_xmas, query.data)
+    reply = "Christmas day %s is now configured to the %sth of December!" % (
+        E_xmas, query.data)
     query.edit_message_text(reply)
     return ConversationHandler.END
 
@@ -201,7 +194,8 @@ def handleReminderTime(update, context):
     context.user_data['reminder_time'] = query.data
     update_job(query.message.chat_id, context)
 
-    reply = "Set %s reminder time to %s" % (E_alarm, query.data)
+    reply = "Daily reminders %s are sent at %s from now on!" % (
+        E_alarm, query.data)
     query.edit_message_text(reply)
     return ConversationHandler.END
 
@@ -217,7 +211,7 @@ def xmas_bot(token):
 
         states={
             CHOOSE: [CallbackQueryHandler(chooseSetting)],
-            HANDLE_XMAS: [CallbackQueryHandler(xmasday)],
+            HANDLE_XMAS: [CallbackQueryHandler(handleXmasDay)],
             HANDLE_REMINDER: [CallbackQueryHandler(handleReminderTime)]
         },
 
@@ -235,18 +229,14 @@ def xmas_bot(token):
     user_data = pp.get_user_data()
 
     for item in pp.get_chat_data().items():
-        print("chat_id", item[0])
         chat_id = item[0]
         this_user = user_data[chat_id]
-        print("user_data", this_user)
         if this_user.get("reminders", "off") == "on":
             # new job
             here = timezone('Europe/Berlin')
             (hours, minutes) = this_user['reminder_time'].split(":")
-            mytime = dt.datetime.combine(
-                dt.date.today(), dt.time(int(hours), int(minutes), 0))
-            print(here.localize(mytime))
-            localized = here.localize(mytime)
+            localized = here.localize(dt.datetime.combine(
+                dt.date.today(), dt.time(int(hours), int(minutes), 0)))
             updater.job_queue.run_daily(
                 reminder, localized, context={
                     "chat_id": chat_id, "xmas_day": this_user["xmas_day"]},
