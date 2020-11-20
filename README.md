@@ -1,6 +1,6 @@
-# Christmas countdown
+# Santa's bot
 
-:santa: Santa's [Telegram bot](https://telegram.org) for all the ones who can't wait for Christmas :christmas_tree:. Sends daily reminders :alarm_clock: how many days are left until Christmas :christmas_tree:
+:santa: Santa's [Telegram bot](https://telegram.org) is for all the ones who can't wait for Christmas :christmas_tree:. The bot sends daily reminders :alarm_clock: how many days are left until Christmas :christmas_tree:
 
 :milky_way: :sled: :santa: :house_with_garden: :christmas_tree: :gift: :gift: :gift:
 
@@ -8,7 +8,7 @@
 
 ## Usage
 
-Visit https://t.me/xmas_reminder_bot or use `@xmas_reminder_bot` directly from within Telegram.
+Visit [t.me/xmas_reminder_bot](https://t.me/xmas_reminder_bot) to get started or use `@xmas_reminder_bot` directly from within Telegram.
 
 ## Deployment
 
