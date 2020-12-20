@@ -11,19 +11,26 @@ from telegram.ext import CallbackQueryHandler, CommandHandler,\
 # emojis
 E_alarm = "\U000023F0"
 E_blush = "\U0001F60A"
+E_cookies = "\U0001F36A"
 E_gear = "\U00002699"
 E_grin = "\U0001F604"
+E_present = "\U0001F381"
 E_restart = "\U0001F7E2"
 E_santa = "\U0001F385"
 E_stop = "\U0001F6D1"
 E_tada = "\U0001F389"
+E_wink = "\U0001F609"
 E_xmas = "\U0001F384"
 
 CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
 
 CURRENT_VERSION = "1.1.0"
 
-Whats_new = {"1.1.0": ["What's new messages %s" % E_grin, "Some code cleanup"]}
+Whats_new = {"1.1.0":
+             ["Special messages between Christmas %s and "
+              "New Year's Eve" % E_xmas,
+              "What's new messages %s" % E_grin,
+              "Some code cleanup"]}
 
 
 def santaSay(text):
@@ -74,20 +81,39 @@ def reminder(context):
     ctx = context.job.context
     today = dt.date.today()
     diff = dt.date(today.year, 12, int(ctx["xmas_day"])) - today
-    # todo: if diff.days == 0 -> Merry christmas!
-    # todo: if diff.days == 1 -> Tomorrow is christmas
-    if diff.days < 0:
-        diff = dt.date(today.year + 1, 12, int(ctx["xmas_day"])) - today
+
+    # default message
+    message = "Only %s days left until Christmas %s" % (diff.days, E_xmas)
+
+    # Special days
+    if diff.days == 0:
+        # Christmas
+        message = "Merry Christmas %s" % E_xmas
+    elif diff.days == 1:
+        # the day before Christmas
+        message = "Are you ready for Christmas %s? Did you buy presents %s?"\
+            "Tomorrow is Christmas %s" % (E_xmas, E_present, E_blush)
+    elif diff.days == -1:
+        # the day after Christmas
+        message = "It's still Christmas %s today %s" % (E_xmas, E_tada)
+    elif diff.days < 0:
+        # between Xmas and New Year's Eve
+        message = "It's still Christmas %s as long as there are Christmas "\
+            "cookies %s left. %s" % (E_xmas, E_cookies, E_wink)
+    elif today.day == 1 and today.month == 1:
+        default_message = message
+        message = "New year, new Christmas %s! %s Oh, and happy new year!" % (
+            E_xmas, default_message)
+
     context.bot.send_message(
         ctx["chat_id"],
-        text=santaSay("Only %s days left until christmas %s" %
-                      (diff.days, E_xmas)))
+        text=santaSay(message))
 
 
 def start_cmd(update, context):
     # setting default values
     setDefaultUserData(context, "xmas_day", "24")
-    setDefaultUserData(context, "reminder_time", "08:00")
+    setDefaultUserData(context, "reminder_time", "20:56")
     setDefaultUserData(context, "reminders", "on")
     setDefaultUserData(context, "version", CURRENT_VERSION)
 
@@ -150,20 +176,20 @@ def settings_cmd(update, context):
                  InlineKeyboardButton("cancel",
                                       callback_data="cancel")]]
     markup = InlineKeyboardMarkup(keyboard)
-
     jobs = context.job_queue.get_jobs_by_name(str(update.message.chat_id))
-    update.message.reply_text(santaSay(
-        "Your current configuration looks like this:\n\n"
-        "\t\U00002022 Reminders: " +
-        ("on " + E_restart if len(jobs) > 0 else "off " + E_stop) + "\n"
-        "\t\U00002022 Christmas day: " +
-        context.user_data["xmas_day"] + "\n"
-        "\t\U00002022 Reminder time: " +
-        context.user_data["reminder_time"] + "\n\n"
-        "What do you want to configure? If these settings look good, use the "
-        "cancel button or just send /cancel."),
-        reply_markup=markup)
 
+    current_settings = "Your current configuration looks like this:\n\n"\
+        "\t\U00002022 Reminders: %s\n"\
+        "\t\U00002022 Christmas day: %s\n"\
+        "\t\U00002022 Reminder time: %s\n\n"\
+        "What do you want to configure? If these settings look good, use the "\
+        "cancel button or just send /cancel." % (
+            "on " + E_restart if len(jobs) > 0 else "off " + E_stop,
+            context.user_data["xmas_day"],
+            context.user_data["reminder_time"])
+
+    update.message.reply_text(santaSay(current_settings),
+                              reply_markup=markup)
     return CHOOSE
 
 
@@ -175,7 +201,7 @@ def chooseSetting(update, context):
         keyboard = [[InlineKeyboardButton("24th", callback_data='24'),
                      InlineKeyboardButton("25th", callback_data='25')]]
 
-        text = "Okay, let's set Christmas day. Which day is Christmas day for you?"
+        text = "Okay, let's set Christmas day. When is Christmas day for you?"
         query.edit_message_text(text=santaSay(text),
                                 reply_markup=InlineKeyboardMarkup(keyboard))
         return HANDLE_XMAS
@@ -183,7 +209,8 @@ def chooseSetting(update, context):
         keyboard = [[InlineKeyboardButton("8 AM", callback_data="08:00"),
                      InlineKeyboardButton("Noon", callback_data="12:00"),
                      InlineKeyboardButton("6 PM", callback_data="18:00")]]
-        text = "Okay, let's set the reminder time. When should I remind you?"
+        text = "Okay, let's set the reminder time. When should I remind you?"\
+            " (Times are given in CET)"
         query.edit_message_text(text=santaSay(text),
                                 reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -268,23 +295,19 @@ def xmas_bot(token):
 
         userVersion = this_user.get("version", "1.0.2")
         (major, minor, patch) = userVersion.split(".")
-        print("current version: %s" % CURRENT_VERSION)
-        print("user version: %s" % userVersion)
-        if major < cMajor or (major == cMajor and
-                              (minor < cMinor or (minor == cMinor and patch < cPatch))):
+        if major < cMajor or (
+                major == cMajor and (
+                    minor < cMinor or (minor == cMinor and patch < cPatch))):
             # we have a newer version -> show what's new
-            text = "Here's what's new in version %s %s\n\n" % (CURRENT_VERSION, E_tada)
+            text = "Here's what's new in version %s %s\n\n" % (
+                CURRENT_VERSION, E_tada)
             for note in Whats_new[CURRENT_VERSION]:
                 text = text + ("\t\U00002022 %s\n" % note)
             updater.job_queue.run_once(whatsNewMessage, 2, context={
                 "chat_id": chat_id, "text": santaSay(text)},
                 name="new%s" % str(chat_id))
             # then, update current version
-            this_user["version"] = CURRENT_VERSION
-            print("updating %s", chat_id)
-            print(this_user)
-            pp.update_user_data(chat_id, this_user)
-            pp.flush()
+            myDispatcher.user_data[chat_id]["version"] = CURRENT_VERSION
 
     updater.start_polling()
     updater.idle()
