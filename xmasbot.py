@@ -10,14 +10,29 @@ from telegram.ext import CallbackQueryHandler, CommandHandler,\
 
 # emojis
 E_alarm = "\U000023F0"
+E_blush = "\U0001F60A"
 E_gear = "\U00002699"
+E_grin = "\U0001F604"
 E_restart = "\U0001F7E2"
 E_santa = "\U0001F385"
 E_stop = "\U0001F6D1"
+E_tada = "\U0001F389"
 E_xmas = "\U0001F384"
-E_blush = "\U0001F60A"
 
 CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
+
+CURRENT_VERSION = "1.1.0"
+
+Whats_new = {"1.1.0": ["What's new messages %s" % E_grin, "Some code cleanup"]}
+
+
+def santaSay(text):
+    return E_santa + "Ho ho ho!\n\n" + text
+
+
+def setDefaultUserData(context, key, value):
+    if key not in context.user_data:
+        context.user_data[key] = value
 
 
 def remove_jobs_by_name(name, context):
@@ -50,6 +65,11 @@ def update_job(chat_id, context):
     setup_new_job(chat_id, context)
 
 
+def whatsNewMessage(context):
+    ctx = context.job.context
+    context.bot.send_message(ctx["chat_id"], text=ctx["text"])
+
+
 def reminder(context):
     ctx = context.job.context
     today = dt.date.today()
@@ -60,39 +80,39 @@ def reminder(context):
         diff = dt.date(today.year + 1, 12, int(ctx["xmas_day"])) - today
     context.bot.send_message(
         ctx["chat_id"],
-        text="Only %s days left until christmas %s" % (diff.days, E_xmas))
+        text=santaSay("Only %s days left until christmas %s" %
+                      (diff.days, E_xmas)))
 
 
 def start_cmd(update, context):
     # setting default values
-    if "xmas_day" not in context.user_data:
-        context.user_data['xmas_day'] = "24"
-    if "reminder_time" not in context.user_data:
-        context.user_data["reminder_time"] = "00:01"
-    if "reminders" not in context.user_data:
-        context.user_data["reminders"] = "on"
+    setDefaultUserData(context, "xmas_day", "24")
+    setDefaultUserData(context, "reminder_time", "08:00")
+    setDefaultUserData(context, "reminders", "on")
+    setDefaultUserData(context, "version", CURRENT_VERSION)
 
+    # setup a new reminder job
     chat_id = update.message.chat_id
     remove_jobs_by_name(str(chat_id), context)
     setup_new_job(chat_id, context)
 
-    reply = E_santa + "Ho ho ho!\n\n"\
-        "Santa's bot works out of the box, but you can use /settings to "\
+    # write a nice reply
+    reply = "Santa's bot works out of the box, but you can use /settings to "\
         "configure " + E_gear + " almost everything.\n\n"\
         "You can also /stop the daily reminders " + E_stop + " or /restart "\
         "if you ever stopped receiving them."
-    update.message.reply_text(reply)
+    update.message.reply_text(santaSay(reply))
 
 
 def stop_cmd(update, context):
+    reply = "No reminders found to remove."
     removed = remove_jobs_by_name(str(update.message.chat_id), context)
 
     if removed:
-        update.message.reply_text(
-            E_stop + " All reminders removed. If you change "
-            "your mind use /restart to re-enable them.")
-    else:
-        update.message.reply_text("No reminders found to remove.")
+        reply = E_stop + " All reminders removed. If you change "\
+            "your mind use /restart to re-enable them."
+
+    update.message.reply_text(santaSay(reply))
 
 
 def restart_cmd(update, context):
@@ -100,22 +120,25 @@ def restart_cmd(update, context):
     current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
 
     if len(current_jobs) > 0:
-        update.message.reply_text("You already have a reminder configured.")
+        reply = "You already have reminders configured. Looks like Santa's "\
+            "Bot has nothing to do here."
+        update.message.reply_text(santaSay(reply))
         return
 
     setup_new_job(chat_id, context)
-    update.message.reply_text(E_restart + " Restarted your reminders.")
+    update.message.reply_text(
+        santaSay(E_restart + " Restarted your reminders."))
 
 
 def help_cmd(update, context):
-    help_text = E_santa + "Ho ho ho!\n\nChosse " + E_gear + " /settings to "\
+    help_text = "Chosse " + E_gear + " /settings to "\
         "configure almost everything. You can also /stop the daily reminders "\
         + E_stop + " if you don't want them anymore."
-    update.message.reply_text(help_text)
+    update.message.reply_text(santaSay(help_text))
 
 
 def cancel_cmd(update, context):
-    update.message.reply_text("Okay. Gotta go, bye! \U0001F44B")
+    update.message.reply_text(santaSay("Okay. Gotta go, bye! \U0001F44B"))
     return ConversationHandler.END
 
 
@@ -129,8 +152,7 @@ def settings_cmd(update, context):
     markup = InlineKeyboardMarkup(keyboard)
 
     jobs = context.job_queue.get_jobs_by_name(str(update.message.chat_id))
-    update.message.reply_text(
-        E_santa + "Ho ho ho!\n\n"
+    update.message.reply_text(santaSay(
         "Your current configuration looks like this:\n\n"
         "\t\U00002022 Reminders: " +
         ("on " + E_restart if len(jobs) > 0 else "off " + E_stop) + "\n"
@@ -139,7 +161,7 @@ def settings_cmd(update, context):
         "\t\U00002022 Reminder time: " +
         context.user_data["reminder_time"] + "\n\n"
         "What do you want to configure? If these settings look good, use the "
-        "cancel button or just send /cancel.",
+        "cancel button or just send /cancel."),
         reply_markup=markup)
 
     return CHOOSE
@@ -153,24 +175,26 @@ def chooseSetting(update, context):
         keyboard = [[InlineKeyboardButton("24th", callback_data='24'),
                      InlineKeyboardButton("25th", callback_data='25')]]
 
-        query.edit_message_text(text="Okay, let's set Christmas day. Which day"
-                                " is Christmas day for you?",
+        text = "Okay, let's set Christmas day. Which day is Christmas day for you?"
+        query.edit_message_text(text=santaSay(text),
                                 reply_markup=InlineKeyboardMarkup(keyboard))
         return HANDLE_XMAS
     elif (query.data == "reminder_time"):
         keyboard = [[InlineKeyboardButton("8 AM", callback_data="08:00"),
                      InlineKeyboardButton("Noon", callback_data="12:00"),
                      InlineKeyboardButton("6 PM", callback_data="18:00")]]
-        query.edit_message_text(text="Okay, let's set the reminder time."
-                                "When should I remind you?",
+        text = "Okay, let's set the reminder time. When should I remind you?"
+        query.edit_message_text(text=santaSay(text),
                                 reply_markup=InlineKeyboardMarkup(keyboard))
 
         return HANDLE_REMINDER
     elif (query.data == "cancel"):
-        query.edit_message_text(text="Keeping your settings as is. " + E_blush)
+        query.edit_message_text(text=santaSay(
+            "Keeping your settings as is. " + E_blush))
         return ConversationHandler.END
 
-    query.edit_message_text(text="I'm sorry, I can't find this setting.")
+    query.edit_message_text(text=santaSay(
+        "I'm sorry, I can't find this setting."))
     return ConversationHandler.END
 
 
@@ -183,7 +207,7 @@ def handleXmasDay(update, context):
 
     reply = "Christmas day %s is now configured to the %sth of December!" % (
         E_xmas, query.data)
-    query.edit_message_text(reply)
+    query.edit_message_text(santaSay(reply))
     return ConversationHandler.END
 
 
@@ -196,15 +220,13 @@ def handleReminderTime(update, context):
 
     reply = "Daily reminders %s are sent at %s from now on!" % (
         E_alarm, query.data)
-    query.edit_message_text(reply)
+    query.edit_message_text(santaSay(reply))
     return ConversationHandler.END
 
 
 def xmas_bot(token):
     pp = PicklePersistence(filename="xmas_reminder_bot_data")
     updater = Updater(token, persistence=pp, use_context=True)
-
-    myDispatcher = updater.dispatcher
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('settings', settings_cmd)],
@@ -217,8 +239,9 @@ def xmas_bot(token):
 
         fallbacks=[CommandHandler('cancel', cancel_cmd)]
     )
-    myDispatcher.add_handler(conv_handler)
 
+    myDispatcher = updater.dispatcher
+    myDispatcher.add_handler(conv_handler)
     myDispatcher.add_handler(CommandHandler("cancel", cancel_cmd))
     myDispatcher.add_handler(CommandHandler("help", help_cmd))
     myDispatcher.add_handler(CommandHandler("start", start_cmd))
@@ -227,6 +250,7 @@ def xmas_bot(token):
 
     # stored user data
     user_data = pp.get_user_data()
+    (cMajor, cMinor, cPatch) = CURRENT_VERSION.split(".")
 
     for item in pp.get_chat_data().items():
         chat_id = item[0]
@@ -241,6 +265,26 @@ def xmas_bot(token):
                 reminder, localized, context={
                     "chat_id": chat_id, "xmas_day": this_user["xmas_day"]},
                 name=str(chat_id))
+
+        userVersion = this_user.get("version", "1.0.2")
+        (major, minor, patch) = userVersion.split(".")
+        print("current version: %s" % CURRENT_VERSION)
+        print("user version: %s" % userVersion)
+        if major < cMajor or (major == cMajor and
+                              (minor < cMinor or (minor == cMinor and patch < cPatch))):
+            # we have a newer version -> show what's new
+            text = "Here's what's new in version %s %s\n\n" % (CURRENT_VERSION, E_tada)
+            for note in Whats_new[CURRENT_VERSION]:
+                text = text + ("\t\U00002022 %s\n" % note)
+            updater.job_queue.run_once(whatsNewMessage, 2, context={
+                "chat_id": chat_id, "text": santaSay(text)},
+                name="new%s" % str(chat_id))
+            # then, update current version
+            this_user["version"] = CURRENT_VERSION
+            print("updating %s", chat_id)
+            print(this_user)
+            pp.update_user_data(chat_id, this_user)
+            pp.flush()
 
     updater.start_polling()
     updater.idle()
