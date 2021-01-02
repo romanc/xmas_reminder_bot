@@ -2,15 +2,23 @@
 
 import configparser
 import datetime as dt
+import logging
 
 from pytz import timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler, CommandHandler,\
     ConversationHandler, PicklePersistence, Updater
 
+# configure logger
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # emojis
 E_alarm = "\U000023F0"
 E_blush = "\U0001F60A"
+E_calendar = "\U0001F4C5"
 E_cookies = "\U0001F36A"
 E_gear = "\U00002699"
 E_grin = "\U0001F604"
@@ -24,9 +32,15 @@ E_xmas = "\U0001F384"
 
 CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
 
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.1.1"
 
-Whats_new = {"1.1.0":
+Whats_new = {"1.1.1":
+             ["During the year, Santa's Bot will only send reminders %s on "
+              "important dates %s like 350 days until Christmas %s." % (
+                  E_alarm, E_calendar, E_xmas),
+              "Daily reminders %s will be back starting 50 days before "
+              "Christmas %s." % (E_alarm, E_xmas)],
+             "1.1.0":
              ["Special messages between Christmas %s and "
               "New Year's Eve" % E_xmas,
               "What's new messages %s" % E_grin,
@@ -35,6 +49,13 @@ Whats_new = {"1.1.0":
 
 def santaSay(text):
     return E_santa + "Ho ho ho!\n\n" + text
+
+
+def newerVersionExists(userVersion):
+    (major, minor, patch) = userVersion.split(".")
+    (cMajor, cMinor, cPatch) = CURRENT_VERSION.split(".")
+    return major < cMajor or (major == cMajor and (
+        minor < cMinor or (minor == cMinor and patch < cPatch)))
 
 
 def setDefaultUserData(context, key, value):
@@ -105,9 +126,13 @@ def reminder(context):
         message = "New year, new Christmas %s! %s Oh, and happy new year!" % (
             E_xmas, default_message)
 
-    context.bot.send_message(
-        ctx["chat_id"],
-        text=santaSay(message))
+    if diff.days <= 50 or diff.days % 50 == 0:
+        # - send daily reminders 50 days before Xmas
+        # - during the rest of the year, only send reminders for
+        #   350, 300, 250, 200, 150, 100, and 50 until Christmas
+        context.bot.send_message(
+            ctx["chat_id"],
+            text=santaSay(message))
 
 
 def start_cmd(update, context):
@@ -183,7 +208,7 @@ def settings_cmd(update, context):
         "\t\U00002022 Christmas day: %s\n"\
         "\t\U00002022 Reminder time: %s\n\n"\
         "What do you want to configure? If these settings look good, use the "\
-        "cancel button or just send /cancel." % (
+        "cancel button." % (
             "on " + E_restart if len(jobs) > 0 else "off " + E_stop,
             context.user_data["xmas_day"],
             context.user_data["reminder_time"])
@@ -197,7 +222,7 @@ def chooseSetting(update, context):
     query = update.callback_query
     query.answer()
 
-    if (query.data == "xmas_day"):
+    if query.data == "xmas_day":
         keyboard = [[InlineKeyboardButton("24th", callback_data='24'),
                      InlineKeyboardButton("25th", callback_data='25')]]
 
@@ -205,7 +230,7 @@ def chooseSetting(update, context):
         query.edit_message_text(text=santaSay(text),
                                 reply_markup=InlineKeyboardMarkup(keyboard))
         return HANDLE_XMAS
-    elif (query.data == "reminder_time"):
+    elif query.data == "reminder_time":
         keyboard = [[InlineKeyboardButton("8 AM", callback_data="08:00"),
                      InlineKeyboardButton("Noon", callback_data="12:00"),
                      InlineKeyboardButton("6 PM", callback_data="18:00")]]
@@ -215,9 +240,9 @@ def chooseSetting(update, context):
                                 reply_markup=InlineKeyboardMarkup(keyboard))
 
         return HANDLE_REMINDER
-    elif (query.data == "cancel"):
+    elif query.data == "cancel":
         query.edit_message_text(text=santaSay(
-            "Keeping your settings as is. " + E_blush))
+            "Keeping your settings as is. %s" % E_blush))
         return ConversationHandler.END
 
     query.edit_message_text(text=santaSay(
@@ -277,7 +302,6 @@ def xmas_bot(token):
 
     # stored user data
     user_data = pp.get_user_data()
-    (cMajor, cMinor, cPatch) = CURRENT_VERSION.split(".")
 
     for item in pp.get_chat_data().items():
         chat_id = item[0]
@@ -293,19 +317,18 @@ def xmas_bot(token):
                     "chat_id": chat_id, "xmas_day": this_user["xmas_day"]},
                 name=str(chat_id))
 
-        userVersion = this_user.get("version", "1.0.2")
-        (major, minor, patch) = userVersion.split(".")
-        if major < cMajor or (
-                major == cMajor and (
-                    minor < cMinor or (minor == cMinor and patch < cPatch))):
+        if newerVersionExists(this_user.get("version", "1.0.2")):
             # we have a newer version -> show what's new
             text = "Here's what's new in version %s %s\n\n" % (
                 CURRENT_VERSION, E_tada)
             for note in Whats_new[CURRENT_VERSION]:
                 text = text + ("\t\U00002022 %s\n" % note)
+
+            # send a what's new message
             updater.job_queue.run_once(whatsNewMessage, 2, context={
                 "chat_id": chat_id, "text": santaSay(text)},
                 name="new%s" % str(chat_id))
+
             # then, update current version
             myDispatcher.user_data[chat_id]["version"] = CURRENT_VERSION
 
@@ -314,7 +337,9 @@ def xmas_bot(token):
 
 
 if __name__ == '__main__':
+    logger.info("Parsing configfile")
     config = configparser.ConfigParser()
     config.read("config.ini")
 
+    logger.info("Running Züri Trash Bot")
     xmas_bot(config['api.telegram.org']['token'])
