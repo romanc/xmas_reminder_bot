@@ -32,9 +32,13 @@ E_xmas = "\U0001F384"
 
 CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
 
-CURRENT_VERSION = "1.1.1"
+CURRENT_VERSION = "1.2.0"
 
-Whats_new = {"1.1.1":
+Whats_new = {"1.2.0":
+             ["At any time of the year, use /howlong to ask Santa's bot how "
+              "many days remain until Christmas.",
+              "Improved /help menu and minor text corrections."],
+             "1.1.1":
              ["During the year, Santa's Bot will only send reminders %s on "
               "important dates %s like 350 days until Christmas %s." % (
                   E_alarm, E_calendar, E_xmas),
@@ -101,6 +105,7 @@ def whatsNewMessage(context):
 def reminder(context):
     ctx = context.job.context
     today = dt.date.today()
+    new_year = today.day == 1 and today.month == 1
     diff = dt.date(today.year, 12, int(ctx["xmas_day"])) - today
 
     # default message
@@ -121,12 +126,13 @@ def reminder(context):
         # between Xmas and New Year's Eve
         message = "It's still Christmas %s as long as there are Christmas "\
             "cookies %s left. %s" % (E_xmas, E_cookies, E_wink)
-    elif today.day == 1 and today.month == 1:
+    elif new_year:
         default_message = message
         message = "New year, new Christmas %s! %s Oh, and happy new year!" % (
             E_xmas, default_message)
 
-    if diff.days <= 50 or diff.days % 50 == 0:
+    if new_year or diff.days <= 50 or diff.days % 50 == 0:
+        # - send a special message if the year starts
         # - send daily reminders 50 days before Xmas
         # - during the rest of the year, only send reminders for
         #   350, 300, 250, 200, 150, 100, and 50 until Christmas
@@ -150,8 +156,7 @@ def start_cmd(update, context):
     # write a nice reply
     reply = "Santa's bot works out of the box, but you can use /settings to "\
         "configure " + E_gear + " almost everything.\n\n"\
-        "You can also /stop the daily reminders " + E_stop + " or /restart "\
-        "if you ever stopped receiving them."
+        "Just type /help in case you need assistance with anything."
     update.message.reply_text(santaSay(reply))
 
 
@@ -182,10 +187,26 @@ def restart_cmd(update, context):
 
 
 def help_cmd(update, context):
-    help_text = "Chosse " + E_gear + " /settings to "\
-        "configure almost everything. You can also /stop the daily reminders "\
-        + E_stop + " if you don't want them anymore."
+    help_text = "Santa's bot will send you periodic reminders how many days "\
+        "are left until Christmas " + E_xmas + ". During the year, there "\
+        "will be less reminders than right before Christmas " + E_xmas + \
+        " when timing is more curcial for Santa.\n\n"\
+        "At any time, use /howlong to ask how long you (or others) need to "\
+        "wait for Christmas " + E_xmas + " to arrive.\n\n"\
+        "Chosse " + E_gear + " /settings to "\
+        "configure almost everything. In particular, you can /stop reminders "\
+        + E_stop + " if you don't want them anymore and /restart them once "\
+        "you change your mind."
     update.message.reply_text(santaSay(help_text))
+
+
+def howlong_cmd(update, context):
+    today = dt.date.today()
+    diff = dt.date(today.year, 12, int(context.user_data["xmas_day"])) - today
+
+    reply = "%s days left until Christmas %s" % (diff.days, E_xmas)
+
+    update.message.reply_text(santaSay(reply))
 
 
 def cancel_cmd(update, context):
@@ -296,6 +317,7 @@ def xmas_bot(token):
     myDispatcher.add_handler(conv_handler)
     myDispatcher.add_handler(CommandHandler("cancel", cancel_cmd))
     myDispatcher.add_handler(CommandHandler("help", help_cmd))
+    myDispatcher.add_handler(CommandHandler("howlong", howlong_cmd))
     myDispatcher.add_handler(CommandHandler("start", start_cmd))
     myDispatcher.add_handler(CommandHandler("stop", stop_cmd))
     myDispatcher.add_handler(CommandHandler("restart", restart_cmd))
