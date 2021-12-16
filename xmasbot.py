@@ -32,9 +32,11 @@ E_xmas = "\U0001F384"
 
 CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
 
-CURRENT_VERSION = "1.2.0"
+CURRENT_VERSION = "1.3.0"
 
-Whats_new = {"1.2.0":
+Whats_new = {"1.3.0":
+             ["Added /about command"],
+             "1.2.0":
              ["At any time of the year, use /howlong to ask Santa's bot how "
               "many days remain until Christmas.",
               "Improved /help menu and minor text corrections."],
@@ -139,6 +141,17 @@ def reminder(context):
         context.bot.send_message(
             ctx["chat_id"],
             text=santaSay(message))
+
+
+def about_cmd(update, context):
+    about = "Santa's bot is an open-source project, see "\
+        "https://github.com/romanc/xmas_reminder_bot/\n\n"\
+        "Santa's bot is made possible by\n"\
+        "\t\U00002022 https://github.com/python-telegram-bot\n"\
+        "Kudos and keep up the nice work!\n\n"\
+        "This service is provided 'as is', without warranty of any kind."
+
+    update.message.reply_text(santaSay(about))
 
 
 def start_cmd(update, context):
@@ -315,6 +328,7 @@ def xmas_bot(token):
 
     myDispatcher = updater.dispatcher
     myDispatcher.add_handler(conv_handler)
+    myDispatcher.add_handler(CommandHandler("about", about_cmd))
     myDispatcher.add_handler(CommandHandler("cancel", cancel_cmd))
     myDispatcher.add_handler(CommandHandler("help", help_cmd))
     myDispatcher.add_handler(CommandHandler("howlong", howlong_cmd))
