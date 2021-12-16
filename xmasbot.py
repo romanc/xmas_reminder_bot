@@ -3,11 +3,13 @@
 import configparser
 import datetime as dt
 import logging
+import random
 
+from pathlib import Path
 from pytz import timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler, CommandHandler,\
-    ConversationHandler, PicklePersistence, Updater
+    ConversationHandler, Filters, MessageHandler, PicklePersistence, Updater
 
 # configure logger
 logging.basicConfig(
@@ -22,8 +24,10 @@ E_calendar = "\U0001F4C5"
 E_cookies = "\U0001F36A"
 E_gear = "\U00002699"
 E_grin = "\U0001F604"
+E_notes = "\U0001F3B6"
 E_present = "\U0001F381"
 E_restart = "\U0001F7E2"
+E_rocket = "\U0001F680"
 E_santa = "\U0001F385"
 E_stop = "\U0001F6D1"
 E_tada = "\U0001F389"
@@ -35,7 +39,8 @@ CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
 CURRENT_VERSION = "1.3.0"
 
 Whats_new = {"1.3.0":
-             ["Added /about command"],
+             ["Send a %s, get a tree" % (E_xmas),
+              "Added /about command"],
              "1.2.0":
              ["At any time of the year, use /howlong to ask Santa's bot how "
               "many days remain until Christmas.",
@@ -310,6 +315,35 @@ def handleReminderTime(update, context):
     return ConversationHandler.END
 
 
+def chatWithSanta(update, context):
+    # send a tree, get a tree
+    message = update.message
+    hasTree = message.text and message.text.find(E_xmas) > -1
+    hasSticker = message.sticker
+    isTreeSticker = hasSticker and message.sticker.emoji.find(E_xmas) > -1
+    isTreeSet = hasSticker and message.sticker.set_name == "ElkaTree"
+    if hasTree or isTreeSticker or isTreeSet:
+        text = "Thank you for this nice Xmas tree. "\
+            "Here's a random %s tree for you from my collection." % E_xmas
+
+        trees = Path("./trees").glob("tree*.jpg")
+        context.bot.send_photo(
+            chat_id=update.message.chat_id,
+            caption=santaSay(text),
+            photo=open(random.choice(list(trees)), "rb")
+        )
+
+    # rocket santa
+    hasRocket = message.text and message.text.find(E_rocket) > -1
+    isRocketSticker = hasSticker and message.sticker.emoji.find(E_rocket) > -1
+    if hasRocket or isRocketSticker:
+        context.bot.send_photo(
+            chat_id=update.message.chat_id,
+            caption="%s I'm a rocket man ... " % E_notes,
+            photo=open(Path("./trees/santa-0.jpg"), "rb")
+        )
+
+
 def xmas_bot(token):
     pp = PicklePersistence(filename="xmas_reminder_bot_data")
     updater = Updater(token, persistence=pp, use_context=True)
@@ -336,6 +370,10 @@ def xmas_bot(token):
     myDispatcher.add_handler(CommandHandler("stop", stop_cmd))
     myDispatcher.add_handler(CommandHandler("restart", restart_cmd))
 
+    # message handler for send a tree, get a tree
+    myDispatcher.add_handler(MessageHandler(
+        Filters.sticker | (Filters.text & ~Filters.command), chatWithSanta))
+
     # stored user data
     user_data = pp.get_user_data()
 
@@ -355,8 +393,8 @@ def xmas_bot(token):
 
         if newerVersionExists(this_user.get("version", "1.0.2")):
             # we have a newer version -> show what's new
-            text = "Here's what's new in version %s %s\n\n" % (
-                CURRENT_VERSION, E_tada)
+            text = "Santa has been innovating. Here's what's new in "\
+                "version %s %s\n\n" % (CURRENT_VERSION, E_tada)
             for note in Whats_new[CURRENT_VERSION]:
                 text = text + ("\t\U00002022 %s\n" % note)
 
@@ -377,5 +415,5 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read("config.ini")
 
-    logger.info("Running Züri Trash Bot")
+    logger.info("Running Xmas Trash Bot")
     xmas_bot(config['api.telegram.org']['token'])
