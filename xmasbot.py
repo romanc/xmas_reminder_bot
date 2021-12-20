@@ -31,7 +31,11 @@ E_rocket = "\U0001F680"
 E_santa = "\U0001F385"
 E_stop = "\U0001F6D1"
 E_tada = "\U0001F389"
+E_wave = "\U0001F44B"
 E_wink = "\U0001F609"
+E_world0 = "\U0001F30D"
+E_world1 = "\U0001F30E"
+E_world2 = "\U0001F30F"
 E_xmas = "\U0001F384"
 
 CHOOSE, HANDLE_XMAS, HANDLE_REMINDER = range(3)
@@ -60,6 +64,10 @@ Whats_new = {"1.3.0":
 
 def santaSay(text):
     return E_santa + "Ho ho ho!\n\n" + text
+
+
+def santaSayEscaped(text):
+    return E_santa + "Ho ho ho\!\n\n" + text
 
 
 def newerVersionExists(userVersion):
@@ -149,14 +157,17 @@ def reminder(context):
 
 
 def about_cmd(update, context):
-    about = "Santa's bot is an open-source project, see "\
-        "https://github.com/romanc/xmas_reminder_bot/\n\n"\
-        "Santa's bot is made possible by\n"\
-        "\t\U00002022 https://github.com/python-telegram-bot\n"\
-        "Kudos and keep up the nice work!\n\n"\
-        "This service is provided 'as is', without warranty of any kind."
+    about = "Do you already know Santa\'s "\
+        "[blog](https://cattaneo.coffee/santas_bot/)\?\n\n"\
+        "Santa\'s bot is an "\
+        "[open\-source](https://github.com/romanc/xmas_reminder_bot/) "\
+        "project\. It is only made possible by the awesome "\
+        "[Python Telegram Bot API](https://github.com/python-telegram-bot)\. "\
+        "Kudos and keep up the nice work\!\n\n"\
+        "This service is provided \'as is\', without warranty of any kind\."
 
-    update.message.reply_text(santaSay(about))
+    update.message.reply_text(
+        text=santaSayEscaped(about), parse_mode="MarkdownV2")
 
 
 def start_cmd(update, context):
@@ -342,6 +353,20 @@ def chatWithSanta(update, context):
             caption="%s I'm a rocket man ... " % E_notes,
             photo=open(Path("./trees/santa-0.jpg"), "rb")
         )
+
+    # hello world
+    hasHelloWorld = message.text and (message.text.find(E_wave) > -1
+                                      or message.text.find(E_world0) > -1
+                                      or message.text.find(E_world1) > -1
+                                      or message.text.find(E_world2) > -1)
+    hasHWSticker = hasSticker and (message.sticker.emoji.find(E_wave) > -1
+                                   or message.sticker.emoji.find(E_world0) > -1
+                                   or message.sticker.emoji.find(E_world1) > -1
+                                   or message.sticker.emoji.find(E_world2) > -1)
+    if hasHelloWorld or hasHWSticker:
+        update.message.reply_text(
+            parse_mode="MarkdownV2",
+            text="```python\nprint('Hello, world!')\n```")
 
 
 def xmas_bot(token):
